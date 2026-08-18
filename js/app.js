@@ -867,7 +867,16 @@
       var cost = Calc.calcBillCost(b.items, projects);
       var profit = Calc.calcBillProfit(b, projects);
       var cust = customerMap[b.customerId];
-      var year = b.createdAt ? new Date(b.createdAt).getFullYear() : new Date().getFullYear();
+      // 优先用bill.year，其次从date提取，最后用createdAt
+      var year = b.year;
+      if (!year) {
+        if (b.date) {
+          var m = String(b.date).match(/(\d{4})[-/年]/);
+          if (m) year = parseInt(m[1], 10);
+        }
+        if (!year && b.createdAt) year = new Date(b.createdAt).getFullYear();
+        if (!year) year = new Date().getFullYear();
+      }
       return {
         id: b.id,
         customerId: b.customerId,

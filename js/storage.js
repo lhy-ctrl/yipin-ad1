@@ -220,18 +220,34 @@
 
     function addBill(data) {
       var bills = getBills();
+      var createdAt = new Date().toISOString();
+      var year = extractYearFromDate(data.date, createdAt);
       var bill = {
         id: genId('bill'),
         customerId: data.customerId,
         date: data.date || new Date().toISOString().slice(0, 10),
+        year: year,
         status: data.status || 'unpaid',
         items: data.items || [],
         total: data.total || 0,
-        createdAt: new Date().toISOString()
+        createdAt: createdAt
       };
       bills.push(bill);
       saveBills(bills);
       return bill;
+    }
+
+    /**
+     * 从日期字符串提取年份
+     */
+    function extractYearFromDate(dateStr, createdAt) {
+      if (!dateStr) return createdAt ? new Date(createdAt).getFullYear() : new Date().getFullYear();
+      var s = String(dateStr);
+      // 匹配 YYYY-MM-DD 或 YYYY/MM/DD 或 YYYY年MM月DD日
+      var m = s.match(/(\d{4})[-/年]/);
+      if (m) return parseInt(m[1], 10);
+      // 只有月日，用创建时间年份
+      return createdAt ? new Date(createdAt).getFullYear() : new Date().getFullYear();
     }
 
     function updateBill(id, updates) {
@@ -239,7 +255,10 @@
       for (var i = 0; i < bills.length; i++) {
         if (bills[i].id === id) {
           if (updates.customerId !== undefined) bills[i].customerId = updates.customerId;
-          if (updates.date !== undefined) bills[i].date = updates.date;
+          if (updates.date !== undefined) {
+            bills[i].date = updates.date;
+            bills[i].year = extractYearFromDate(updates.date, bills[i].createdAt);
+          }
           if (updates.status !== undefined) bills[i].status = updates.status;
           if (updates.items !== undefined) bills[i].items = updates.items;
           if (updates.total !== undefined) bills[i].total = updates.total;
@@ -289,12 +308,15 @@
     }
 
     /**
-     * 获取账单年份（从createdAt提取）
+     * 获取账单年份（优先用bill.year，其次从date提取，最后用createdAt）
      */
     function getBillYear(bill) {
-      if (bill.createdAt) {
-        return new Date(bill.createdAt).getFullYear();
+      if (bill.year) return bill.year;
+      if (bill.date) {
+        var m = String(bill.date).match(/(\d{4})[-/年]/);
+        if (m) return parseInt(m[1], 10);
       }
+      if (bill.createdAt) return new Date(bill.createdAt).getFullYear();
       return new Date().getFullYear();
     }
 
