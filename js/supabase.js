@@ -65,19 +65,88 @@
       var data = await res.json();
       if (data.access_token) {
         this.setToken(data.access_token);
+        // 保存refresh_token和过期时间
+        if (data.refresh_token) {
+          try { sessionStorage.setItem('sb_refresh_token', data.refresh_token); } catch(e) {}
+        }
+        if (data.expires_in) {
+          var expireAt = Date.now() + (data.expires_in - 60) * 1000; // 提前60秒刷新
+          try { sessionStorage.setItem('sb_token_expire', String(expireAt)); } catch(e) {}
+        }
         return { success: true, user: data.user };
       }
       return { success: false, error: data.error_description || data.msg || '登录失败' };
     },
 
+    // 刷新token
+    refreshToken: async function () {
+      var refreshToken = null;
+      try { refreshToken = sessionStorage.getItem('sb_refresh_token'); } catch(e) {}
+      if (!refreshToken) return false;
+      try {
+        var res = await fetch(this.url + '/auth/v1/token?grant_type=refresh_token', {
+          method: 'POST',
+          headers: {
+            'apikey': this.key,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ refresh_token: refreshToken })
+        });
+        var data = await res.json();
+        if (data.access_token) {
+          this.setToken(data.access_token);
+          if (data.refresh_token) {
+            try { sessionStorage.setItem('sb_refresh_token', data.refresh_token); } catch(e) {}
+          }
+          if (data.expires_in) {
+            var expireAt = Date.now() + (data.expires_in - 60) * 1000;
+            try { sessionStorage.setItem('sb_token_expire', String(expireAt)); } catch(e) {}
+          }
+          return true;
+        }
+      } catch (e) {
+        console.warn('刷新token失败', e);
+      }
+      return false;
+    },
+
+    // 确保token有效（过期前自动刷新）
+    ensureToken: async function () {
+      var expireAt = null;
+      try { expireAt = parseInt(sessionStorage.getItem('sb_token_expire') || '0', 10); } catch(e) {}
+      if (expireAt && Date.now() > expireAt) {
+        return await this.refreshToken();
+      }
+      return true;
+    },
+
     // 登出
     signOut: function () {
       this.setToken(null);
+      try {
+        sessionStorage.removeItem('sb_refresh_token');
+        sessionStorage.removeItem('sb_token_expire');
+      } catch(e) {}
     },
 
     // 检查是否已登录
     isLoggedIn: function () {
       return !!this.getToken();
+    },
+
+    // ========== 通用请求（自动处理token过期刷新） ==========
+    _request: async function (url, options) {
+      await this.ensureToken();
+      var res = await fetch(url, options);
+      // 401且是JWT过期，刷新token后重试一次
+      if (res.status === 401) {
+        var refreshed = await this.refreshToken();
+        if (refreshed) {
+          options.headers = this.headers();
+          res = await fetch(url, options);
+        }
+      }
+      return res;
     },
 
     // ========== 通用CRUD ==========
@@ -86,7 +155,7 @@
       var url = this.url + '/rest/v1/' + table;
       if (query) url += '?' + query;
       try {
-        var res = await fetch(url, { headers: this.headers() });
+        var res = await this._request(url, { headers: this.headers() });
         if (!res.ok) throw new Error('查询失败(' + table + '): ' + res.status);
         return await res.json();
       } catch (e) {
@@ -99,7 +168,7 @@
     insert: async function (table, data) {
       var url = this.url + '/rest/v1/' + table;
       try {
-        var res = await fetch(url, {
+        var res = await this._request(url, {
           method: 'POST',
           headers: this.headers(),
           body: JSON.stringify(data)
@@ -108,7 +177,6 @@
           var errText = await res.text();
           throw new Error('插入失败(' + table + '): ' + res.status + ' ' + errText);
         }
-        // 处理空响应体
         var text = await res.text();
         return text ? JSON.parse(text) : data;
       } catch (e) {
@@ -119,7 +187,8 @@
 
     // 更新
     update: async function (table, id, data) {
-      var res = await fetch(this.url + '/rest/v1/' + table + '?id=eq.' + encodeURIComponent(id), {
+      var url = this.url + '/rest/v1/' + table + '?id=eq.' + encodeURIComponent(id);
+      var res = await this._request(url, {
         method: 'PATCH',
         headers: this.headers(),
         body: JSON.stringify(data)
@@ -130,7 +199,8 @@
 
     // 删除
     remove: async function (table, id) {
-      var res = await fetch(this.url + '/rest/v1/' + table + '?id=eq.' + encodeURIComponent(id), {
+      var url = this.url + '/rest/v1/' + table + '?id=eq.' + encodeURIComponent(id);
+      var res = await this._request(url, {
         method: 'DELETE',
         headers: this.headers()
       });
@@ -142,7 +212,7 @@
     clear: async function (table) {
       var url = this.url + '/rest/v1/' + table + '?id=not.is.null';
       try {
-        var res = await fetch(url, {
+        var res = await this._request(url, {
           method: 'DELETE',
           headers: this.headers()
         });
