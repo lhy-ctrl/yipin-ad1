@@ -19,21 +19,6 @@
       DataSync.syncToCloud();
     }
   }
-  function doBackup() {
-    try {
-      // 安全保护：如果主数据为空但有历史备份，不覆盖备份，防止数据丢失
-      var custCount = store.getCustomers().length;
-      var billCount = store.getBills().length;
-      var projCount = store.getProjects().length;
-      var autoInfo = store.getAutoBackupInfo();
-      if (custCount === 0 && billCount === 0 && projCount === 0 && autoInfo) {
-        console.warn('主数据为空，跳过自动备份以保护历史备份');
-        return;
-      }
-      store.autoBackup();
-      hasUnsavedChanges = false;
-    } catch (e) { console.error('备份失败', e); }
-  }
 
   // ========== VIP 类型映射 ==========
   var VIP_LABELS = {
@@ -1132,25 +1117,16 @@
       '</div>' +
     '</div>';
 
-    // 自动备份信息
-    var autoInfo = store.getAutoBackupInfo();
+    // 云端数据同步
     html += '<div class="backup-card" style="margin-top:16px;max-width:600px;">' +
-      '<h3>' + ICONS.archive + ' 自动备份</h3>' +
-      '<p style="color:#888;font-size:13px;margin-bottom:12px;">关闭页面时自动提醒备份，仅保留最新一份</p>';
-    if (autoInfo) {
-      html += '<div style="background:rgba(246,247,252,0.8);border-radius:10px;padding:14px 18px;margin-bottom:14px;font-size:13px;color:#5a6178;line-height:1.8;">' +
-        '<div>上次备份：<strong style="color:#2d3142;">' + formatDateTime(autoInfo.backedUpAt) + '</strong></div>' +
-        '<div>客户：<strong>' + autoInfo.customerCount + '</strong> 个　账单：<strong>' + autoInfo.billCount + '</strong> 张　项目：<strong>' + autoInfo.projectCount + '</strong> 个</div>' +
+      '<h3>' + ICONS.archive + ' 云端数据同步</h3>' +
+      '<p style="color:#888;font-size:13px;margin-bottom:12px;">数据自动保存到云端，换设备登录自动拉取最新数据</p>' +
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
+        '<button class="btn btn-primary" id="syncCloudBtn">同步到云端</button>' +
+        '<button class="btn btn-default" id="pullCloudBtn">从云端拉取</button>' +
       '</div>' +
-      '<button class="btn btn-default" id="restoreBackupBtn" style="margin-right:8px;">恢复自动备份</button>' +
-      '<button class="btn btn-default" id="refreshBackupBtn" style="margin-right:8px;">立即备份</button>' +
-      '<button class="btn btn-default" id="syncCloudBtn">同步到云端</button>';
-    } else {
-      html += '<div style="color:#a0a7ba;font-size:13px;margin-bottom:14px;">暂无自动备份记录</div>' +
-      '<button class="btn btn-default" id="refreshBackupBtn" style="margin-right:8px;">立即备份</button>' +
-      '<button class="btn btn-default" id="syncCloudBtn">同步到云端</button>';
-    }
-    html += '</div>';
+      '<div class="backup-desc">同步到云端：用本地数据覆盖云端<br>从云端拉取：用云端数据覆盖本地</div>' +
+    '</div>';
 
     // 导入结果区域
     html += '<div id="importResult" style="margin-top:20px;"></div>';
@@ -1208,34 +1184,7 @@
       };
     }
 
-    // 恢复自动备份
-    var restoreBtn = $('restoreBackupBtn');
-    if (restoreBtn) {
-      restoreBtn.onclick = function () {
-        confirmDialog('确定恢复自动备份吗？当前数据将被覆盖。', function () {
-          var ok = store.restoreAutoBackup();
-          if (ok) {
-            showToast('已恢复自动备份');
-            hasUnsavedChanges = false;
-            pages.backup();
-          } else {
-            showToast('恢复失败，无备份数据');
-          }
-        });
-      };
-    }
-
-    // 立即备份
-    var refreshBtn = $('refreshBackupBtn');
-    if (refreshBtn) {
-      refreshBtn.onclick = function () {
-        doBackup();
-        showToast('已立即备份');
-        pages.backup();
-      };
-    }
-
-    // 手动同步到云端
+    // 手动同步到云端（直接覆盖，不比对）
     var syncBtn = $('syncCloudBtn');
     if (syncBtn) {
       syncBtn.onclick = async function () {
@@ -1247,25 +1196,40 @@
         syncBtn.textContent = '同步中...';
         try {
           await DataSync.syncToCloud();
-          // 验证云端数据
-          var cloudData = await CloudStore.exportAll();
           var localData = store.exportAll();
-          var match = cloudData.customers.length === localData.customers.length &&
-                      cloudData.bills.length === localData.bills.length &&
-                      cloudData.projects.length === localData.projects.length;
-          if (match) {
-            showToast('同步完成：' + localData.customers.length + '客户，' + localData.bills.length + '账单，' + localData.projects.length + '项目');
-          } else {
-            showToast('同步完成（数据有差异）：本地' + localData.customers.length + '/' + cloudData.customers.length + '客户，' +
-              localData.bills.length + '/' + cloudData.bills.length + '账单，' +
-              localData.projects.length + '/' + cloudData.projects.length + '项目（本地/云端）');
-          }
+          showToast('已同步到云端：' + localData.customers.length + '客户，' + localData.bills.length + '账单，' + localData.projects.length + '项目');
         } catch (e) {
           showToast('同步失败：' + e.message);
           console.error(e);
         }
         syncBtn.disabled = false;
         syncBtn.textContent = '同步到云端';
+      };
+    }
+
+    // 从云端拉取数据（覆盖本地）
+    var pullBtn = $('pullCloudBtn');
+    if (pullBtn) {
+      pullBtn.onclick = async function () {
+        if (typeof DataSync === 'undefined' || !DataSync.isLoggedIn()) {
+          showToast('未登录云端，无法拉取');
+          return;
+        }
+        confirmDialog('确定从云端拉取数据吗？当前本地数据将被覆盖。', async function () {
+          pullBtn.disabled = true;
+          pullBtn.textContent = '拉取中...';
+          try {
+            var cloudData = await CloudStore.exportAll();
+            store.importAll(cloudData);
+            showToast('已从云端拉取：' + cloudData.customers.length + '客户，' + cloudData.bills.length + '账单，' + cloudData.projects.length + '项目');
+            setTimeout(function () { pages.backup(); }, 500);
+          } catch (e) {
+            showToast('拉取失败：' + e.message);
+            console.error(e);
+          }
+          pullBtn.disabled = false;
+          pullBtn.textContent = '从云端拉取';
+        });
       };
     }
   };
@@ -2235,22 +2199,13 @@
       }
     }
 
-    // 页面关闭/刷新时提醒备份
-    window.addEventListener('beforeunload', function (e) {
-      if (!hasUnsavedChanges) return;
-      // 同步备份到localStorage
-      doBackup();
-      // 触发浏览器原生确认框
-      e.preventDefault();
-      e.returnValue = '您有未备份的数据变更，确定要离开吗？';
-      return e.returnValue;
+    // 页面关闭/刷新时同步云端
+    window.addEventListener('beforeunload', function () {
+      // 数据已在每次修改时自动同步到云端，无需额外操作
     });
 
     // 路由监听
     window.addEventListener('hashchange', router);
-
-    // 空数据检测：如果主数据为空但有自动备份，提示恢复
-    checkAndPromptRestore();
 
     // 初始路由
     if (!location.hash) {
@@ -2258,37 +2213,6 @@
     } else {
       router();
     }
-  }
-
-  // 检测空数据并提示恢复自动备份
-  function checkAndPromptRestore() {
-    if (typeof sessionStorage === 'undefined') return;
-    if (sessionStorage.getItem('restore_prompted') === '1') return;
-    sessionStorage.setItem('restore_prompted', '1');
-
-    var hasData = store.getCustomers().length > 0 ||
-                  store.getBills().length > 0 ||
-                  store.getProjects().length > 0;
-    if (hasData) return;
-
-    var autoInfo = store.getAutoBackupInfo();
-    if (!autoInfo || (autoInfo.customerCount === 0 && autoInfo.billCount === 0 && autoInfo.projectCount === 0)) return;
-
-    setTimeout(function () {
-      confirmDialog(
-        '检测到当前数据为空，但存在自动备份（' + formatDateTime(autoInfo.backedUpAt) +
-        '，含' + autoInfo.customerCount + '个客户、' + autoInfo.billCount + '张账单）。是否恢复？',
-        function () {
-          var ok = store.restoreAutoBackup();
-          if (ok) {
-            showToast('已恢复自动备份');
-            router();
-          } else {
-            showToast('恢复失败');
-          }
-        }
-      );
-    }, 500);
   }
 
   // DOM就绪后初始化
