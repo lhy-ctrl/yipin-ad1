@@ -1250,11 +1250,15 @@
           // 验证云端数据
           var cloudData = await CloudStore.exportAll();
           var localData = store.exportAll();
-          if (cloudData.customers.length === localData.customers.length &&
-              cloudData.projects.length === localData.projects.length) {
-            showToast('同步完成，云端验证通过');
+          var match = cloudData.customers.length === localData.customers.length &&
+                      cloudData.bills.length === localData.bills.length &&
+                      cloudData.projects.length === localData.projects.length;
+          if (match) {
+            showToast('同步完成：' + localData.customers.length + '客户，' + localData.bills.length + '账单，' + localData.projects.length + '项目');
           } else {
-            showToast('同步异常：本地' + localData.customers.length + '客户，云端' + cloudData.customers.length + '客户');
+            showToast('同步完成（数据有差异）：本地' + localData.customers.length + '/' + cloudData.customers.length + '客户，' +
+              localData.bills.length + '/' + cloudData.bills.length + '账单，' +
+              localData.projects.length + '/' + cloudData.projects.length + '项目（本地/云端）');
           }
         } catch (e) {
           showToast('同步失败：' + e.message);
