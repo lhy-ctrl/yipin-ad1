@@ -80,32 +80,58 @@
 
     // 刷新token
     refreshToken: async function () {
-      var refreshToken = null;
-      try { refreshToken = sessionStorage.getItem('sb_refresh_token'); } catch(e) {}
-      if (!refreshToken) return false;
+      var refreshTokenStr = null;
+      try { refreshTokenStr = sessionStorage.getItem('sb_refresh_token'); } catch(e) {}
+      if (refreshTokenStr) {
+        try {
+          var res = await fetch(this.url + '/auth/v1/token?grant_type=refresh_token', {
+            method: 'POST',
+            headers: {
+              'apikey': this.key,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ refresh_token: refreshTokenStr })
+          });
+          var data = await res.json();
+          if (data.access_token) {
+            this.setToken(data.access_token);
+            if (data.refresh_token) {
+              try { sessionStorage.setItem('sb_refresh_token', data.refresh_token); } catch(e) {}
+            }
+            if (data.expires_in) {
+              var expireAt = Date.now() + (data.expires_in - 60) * 1000;
+              try { sessionStorage.setItem('sb_token_expire', String(expireAt)); } catch(e) {}
+            }
+            return true;
+          }
+        } catch (e) {
+          console.warn('refresh_token刷新失败，尝试用密码重新登录', e);
+        }
+      }
+      // refresh_token不存在或失败，用邮箱密码重新登录
       try {
-        var res = await fetch(this.url + '/auth/v1/token?grant_type=refresh_token', {
+        var loginRes = await fetch(this.url + '/auth/v1/token?grant_type=password', {
           method: 'POST',
           headers: {
             'apikey': this.key,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ refresh_token: refreshToken })
+          body: JSON.stringify({ email: this.email, password: this.sbPassword })
         });
-        var data = await res.json();
-        if (data.access_token) {
-          this.setToken(data.access_token);
-          if (data.refresh_token) {
-            try { sessionStorage.setItem('sb_refresh_token', data.refresh_token); } catch(e) {}
+        var loginData = await loginRes.json();
+        if (loginData.access_token) {
+          this.setToken(loginData.access_token);
+          if (loginData.refresh_token) {
+            try { sessionStorage.setItem('sb_refresh_token', loginData.refresh_token); } catch(e) {}
           }
-          if (data.expires_in) {
-            var expireAt = Date.now() + (data.expires_in - 60) * 1000;
-            try { sessionStorage.setItem('sb_token_expire', String(expireAt)); } catch(e) {}
+          if (loginData.expires_in) {
+            var exp = Date.now() + (loginData.expires_in - 60) * 1000;
+            try { sessionStorage.setItem('sb_token_expire', String(exp)); } catch(e) {}
           }
           return true;
         }
       } catch (e) {
-        console.warn('刷新token失败', e);
+        console.error('重新登录失败', e);
       }
       return false;
     },
@@ -114,7 +140,8 @@
     ensureToken: async function () {
       var expireAt = null;
       try { expireAt = parseInt(sessionStorage.getItem('sb_token_expire') || '0', 10); } catch(e) {}
-      if (expireAt && Date.now() > expireAt) {
+      // 没有过期记录（旧版本登录）或已过期，都刷新
+      if (!expireAt || Date.now() > expireAt) {
         return await this.refreshToken();
       }
       return true;
@@ -137,6 +164,8 @@
     // ========== 通用请求（自动处理token过期刷新） ==========
     _request: async function (url, options) {
       await this.ensureToken();
+      // ensureToken可能刷新了token，更新headers
+      options.headers = this.headers();
       var res = await fetch(url, options);
       // 401且是JWT过期，刷新token后重试一次
       if (res.status === 401) {
