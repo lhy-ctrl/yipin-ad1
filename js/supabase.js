@@ -164,15 +164,29 @@
     // ========== 通用请求（自动处理token过期刷新） ==========
     _request: async function (url, options) {
       await this.ensureToken();
-      // ensureToken可能刷新了token，更新headers
       options.headers = this.headers();
-      var res = await fetch(url, options);
+      // 超时保护：30秒
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function () { controller.abort(); }, 30000);
+      options.signal = controller.signal;
+      try {
+        var res = await fetch(url, options);
+      } finally {
+        clearTimeout(timeoutId);
+      }
       // 401且是JWT过期，刷新token后重试一次
       if (res.status === 401) {
         var refreshed = await this.refreshToken();
         if (refreshed) {
           options.headers = this.headers();
-          res = await fetch(url, options);
+          var controller2 = new AbortController();
+          var timeoutId2 = setTimeout(function () { controller2.abort(); }, 30000);
+          options.signal = controller2.signal;
+          try {
+            res = await fetch(url, options);
+          } finally {
+            clearTimeout(timeoutId2);
+          }
         }
       }
       return res;

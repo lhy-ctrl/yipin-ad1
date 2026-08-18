@@ -87,25 +87,15 @@
         }
         console.log('[同步] 开始：' + data.customers.length + '客户，' + data.bills.length + '账单，' + data.projects.length + '项目');
 
-        step = '清空账单表';
-        await CloudStore.sb.clear('bills');
-        step = '清空客户表';
-        await CloudStore.sb.clear('customers');
-        step = '清空项目表';
-        await CloudStore.sb.clear('projects');
-
-        step = '插入客户数据';
-        for (var i = 0; i < data.customers.length; i++) {
-          var c = data.customers[i];
-          await CloudStore.sb.insert('customers', {
+        // 组装批量数据
+        step = '组装数据';
+        var customersBatch = data.customers.map(function (c) {
+          return {
             id: c.id, name: c.name, contact: c.contact || '', phone: c.phone || '',
             address: c.address || '', vip_type: c.vipType || 'normal'
-          });
-        }
-        step = '插入账单数据';
-        for (var j = 0; j < data.bills.length; j++) {
-          var b = data.bills[j];
-          // 确保有year字段
+          };
+        });
+        var billsBatch = data.bills.map(function (b) {
           var billYear = b.year;
           if (!billYear && b.date) {
             var m = String(b.date).match(/(\d{4})[-/年]/);
@@ -113,20 +103,32 @@
           }
           if (!billYear && b.createdAt) billYear = new Date(b.createdAt).getFullYear();
           if (!billYear) billYear = new Date().getFullYear();
-          await CloudStore.sb.insert('bills', {
+          return {
             id: b.id, customer_id: b.customerId, date: b.date || '',
             year: billYear,
             status: b.status || 'unpaid', total: b.total || 0, items: b.items || []
-          });
-        }
-        step = '插入项目数据';
-        for (var k = 0; k < data.projects.length; k++) {
-          var p = data.projects[k];
-          await CloudStore.sb.insert('projects', {
+          };
+        });
+        var projectsBatch = data.projects.map(function (p) {
+          return {
             id: p.id, name: p.name, price: p.price || 0, cost: p.cost || 0,
             vip1_discount: p.vip1Discount || 1.0, vip2_discount: p.vip2Discount || 1.0, vip3_discount: p.vip3Discount || 1.0
-          });
-        }
+          };
+        });
+
+        step = '清空账单表';
+        await CloudStore.sb.clear('bills');
+        step = '清空客户表';
+        await CloudStore.sb.clear('customers');
+        step = '清空项目表';
+        await CloudStore.sb.clear('projects');
+
+        step = '批量插入客户';
+        if (customersBatch.length > 0) await CloudStore.sb.insert('customers', customersBatch);
+        step = '批量插入账单';
+        if (billsBatch.length > 0) await CloudStore.sb.insert('bills', billsBatch);
+        step = '批量插入项目';
+        if (projectsBatch.length > 0) await CloudStore.sb.insert('projects', projectsBatch);
         console.log('[同步] 完成');
       } catch (e) {
         console.error('[同步] 失败在步骤：' + step, e);
