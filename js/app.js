@@ -1091,18 +1091,6 @@
         '<button class="btn btn-primary" id="exportAllBtn">下载备份文件</button>' +
         '<div class="backup-desc">导出包含：客户信息、所有账单明细、项目库配置（含VIP折扣）</div>' +
       '</div>' +
-      // 导入清单
-      '<div class="backup-card">' +
-        '<h3>' + ICONS.download + ' 导入清单数据</h3>' +
-        '<p style="color:#888;font-size:13px;margin-bottom:16px;">支持导入现有清单.xlsx格式</p>' +
-        '<div class="file-input-wrapper">' +
-          '<label class="file-label" for="importFile">选择Excel文件</label>' +
-          '<input type="file" id="importFile" accept=".xlsx,.xls">' +
-          '<span class="file-name" id="importFileName">未选择文件</span>' +
-        '</div>' +
-        '<button class="btn btn-success" id="importBtn" disabled>开始导入</button>' +
-        '<div class="backup-desc">导入前会自动备份当前数据<br>按Sheet识别为一张张账单，自动提取单位、日期、明细</div>' +
-      '</div>' +
       // 导入备份
       '<div class="backup-card">' +
         '<h3>' + ICONS.archive + ' 导入备份文件</h3>' +
@@ -1114,6 +1102,18 @@
         '</div>' +
         '<button class="btn btn-warning" id="importBackupBtn" disabled>恢复备份</button>' +
         '<div class="backup-desc">恢复导出的完整备份格式<br>将覆盖当前所有客户、账单、项目数据</div>' +
+      '</div>' +
+      // 导入清单
+      '<div class="backup-card">' +
+        '<h3>' + ICONS.download + ' 导入清单数据</h3>' +
+        '<p style="color:#888;font-size:13px;margin-bottom:16px;">支持导入现有清单.xlsx格式</p>' +
+        '<div class="file-input-wrapper">' +
+          '<label class="file-label" for="importFile">选择Excel文件</label>' +
+          '<input type="file" id="importFile" accept=".xlsx,.xls">' +
+          '<span class="file-name" id="importFileName">未选择文件</span>' +
+        '</div>' +
+        '<button class="btn btn-success" id="importBtn" disabled>开始导入</button>' +
+        '<div class="backup-desc">导入前会自动备份当前数据<br>按Sheet识别为一张张账单，自动提取单位、日期、明细</div>' +
       '</div>' +
       // 云端数据同步
       '<div class="backup-card">' +
