@@ -1115,17 +1115,16 @@
         '<button class="btn btn-warning" id="importBackupBtn" disabled>恢复备份</button>' +
         '<div class="backup-desc">恢复导出的完整备份格式<br>将覆盖当前所有客户、账单、项目数据</div>' +
       '</div>' +
-    '</div>';
-
-    // 云端数据同步
-    html += '<div class="backup-card" style="margin-top:16px;max-width:600px;">' +
-      '<h3>' + ICONS.archive + ' 云端数据同步</h3>' +
-      '<p style="color:#888;font-size:13px;margin-bottom:12px;">数据自动保存到云端，换设备登录自动拉取最新数据</p>' +
-      '<div style="display:flex;gap:10px;flex-wrap:wrap;">' +
-        '<button class="btn btn-primary" id="syncCloudBtn">同步到云端</button>' +
-        '<button class="btn btn-default" id="pullCloudBtn">从云端拉取</button>' +
+      // 云端数据同步
+      '<div class="backup-card">' +
+        '<h3>' + ICONS.archive + ' 云端数据同步</h3>' +
+        '<p style="color:#888;font-size:13px;margin-bottom:16px;">数据自动保存到云端</p>' +
+        '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+          '<button class="btn btn-primary" id="syncCloudBtn" style="font-size:13px;padding:8px 16px;">同步到云端</button>' +
+          '<button class="btn btn-default" id="pullCloudBtn" style="font-size:13px;padding:8px 16px;">从云端拉取</button>' +
+        '</div>' +
+        '<div class="backup-desc">同步：本地覆盖云端<br>拉取：云端覆盖本地</div>' +
       '</div>' +
-      '<div class="backup-desc">同步到云端：用本地数据覆盖云端<br>从云端拉取：用云端数据覆盖本地</div>' +
     '</div>';
 
     // 导入结果区域
