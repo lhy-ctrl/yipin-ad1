@@ -242,12 +242,13 @@
   var pages = {};
 
   pages.home = function () {
+    var currentYear = new Date().getFullYear();
     var customers = store.getCustomers();
-    // 附加统计信息
+    // 附加统计信息（仅当年）
     customers = customers.map(function (c) {
-      c._total = store.getCustomerTotalSpent(c.id);
-      c._unpaidCount = store.getCustomerUnpaidCount(c.id);
-      c._unpaidAmount = store.getCustomerUnpaidAmount(c.id);
+      c._total = store.getCustomerTotalSpent(c.id, currentYear);
+      c._unpaidCount = store.getCustomerUnpaidCount(c.id, currentYear);
+      c._unpaidAmount = store.getCustomerUnpaidAmount(c.id, currentYear);
       return c;
     }).sort(function (a, b) {
       return b._total - a._total;
@@ -861,15 +862,17 @@
     var customerMap = {};
     customers.forEach(function (c) { customerMap[c.id] = c; });
 
-    // 计算每张账单的成本和利润
+    // 计算每张账单的成本和利润，添加年份
     var billList = bills.map(function (b) {
       var cost = Calc.calcBillCost(b.items, projects);
       var profit = Calc.calcBillProfit(b, projects);
       var cust = customerMap[b.customerId];
+      var year = b.createdAt ? new Date(b.createdAt).getFullYear() : new Date().getFullYear();
       return {
         id: b.id,
         customerId: b.customerId,
         date: b.date,
+        year: year,
         customerName: cust ? cust.name : '未知',
         revenue: b.total,
         cost: cost,
@@ -880,15 +883,15 @@
       return (b.date || '').localeCompare(a.date || '');
     });
 
-    // 汇总
+    // 汇总（所有年份）
     var summary = Calc.calcSummary(bills, projects);
 
     var html = '<div class="page-header">' +
       '<div class="page-title">核对账单</div>' +
       '<div class="page-actions">' +
-        '<select class="form-select" id="auditMonthFilter" style="width:140px;">' +
-          '<option value="all">全部月份</option>' +
-          buildMonthOptions(billList) +
+        '<select class="form-select" id="auditYearFilter" style="width:120px;">' +
+          '<option value="all">全部年份</option>' +
+          buildYearOptions(billList) +
         '</select>' +
         '<select class="form-select" id="auditStatusFilter" style="width:120px;">' +
           '<option value="all">全部状态</option>' +
@@ -900,18 +903,27 @@
       '</div>' +
     '</div>';
 
-    // 汇总卡片
+    // 汇总卡片（所有年份总计）
     html += '<div class="summary-cards">' +
       '<div class="summary-card revenue"><div class="label">总营收</div><div class="value">¥' + formatMoney(summary.revenue) + '</div></div>' +
       '<div class="summary-card cost"><div class="label">总成本</div><div class="value">¥' + formatMoney(summary.cost) + '</div></div>' +
       '<div class="summary-card profit"><div class="label">总利润</div><div class="value">¥' + formatMoney(summary.profit) + '</div></div>' +
     '</div>';
 
-    // 按客户分组
-    var customerGroups = {};
+    // 按年份分组
+    var yearGroups = {};
     billList.forEach(function (b) {
-      if (!customerGroups[b.customerId]) {
-        customerGroups[b.customerId] = {
+      if (!yearGroups[b.year]) {
+        yearGroups[b.year] = { year: b.year, bills: [], revenue: 0, cost: 0, profit: 0, customerGroups: {} };
+      }
+      yearGroups[b.year].bills.push(b);
+      yearGroups[b.year].revenue += b.revenue;
+      yearGroups[b.year].cost += b.cost;
+      yearGroups[b.year].profit += b.profit;
+      // 年内按客户分组
+      var cg = yearGroups[b.year].customerGroups;
+      if (!cg[b.customerId]) {
+        cg[b.customerId] = {
           customerId: b.customerId,
           customerName: b.customerName,
           bills: [],
@@ -920,57 +932,92 @@
           profit: 0
         };
       }
-      customerGroups[b.customerId].bills.push(b);
-      customerGroups[b.customerId].revenue += b.revenue;
-      customerGroups[b.customerId].cost += b.cost;
-      customerGroups[b.customerId].profit += b.profit;
+      cg[b.customerId].bills.push(b);
+      cg[b.customerId].revenue += b.revenue;
+      cg[b.customerId].cost += b.cost;
+      cg[b.customerId].profit += b.profit;
     });
-    var groups = Object.values(customerGroups).sort(function (a, b) {
-      return b.revenue - a.revenue;
-    });
+    var years = Object.values(yearGroups).sort(function (a, b) { return b.year - a.year; });
 
-    // 按客户分组展示
-    if (groups.length === 0) {
+    // 按年份展示
+    if (years.length === 0) {
       html += '<div class="empty-state"><div class="empty-icon">' + ICONS.fileText + '</div><div class="empty-text">暂无账单数据</div></div>';
     } else {
-      groups.forEach(function (g, gi) {
-        var unpaidCount = g.bills.filter(function (b) { return b.status === 'unpaid'; }).length;
-        html += '<div class="audit-customer-group" data-customer="' + g.customerId + '">' +
-          '<div class="audit-customer-header" data-group="' + gi + '">' +
-            '<div class="audit-customer-name">' +
-              '<span class="group-toggle">▶</span> ' +
-              '<a href="#/customer/' + g.customerId + '" class="audit-cust-link" onclick="event.stopPropagation();">' + escapeHtml(g.customerName) + '</a>' +
-              '<span style="font-size:13px;color:#8b93a7;margin-left:8px;">' + g.bills.length + '单' + (unpaidCount > 0 ? '，' + unpaidCount + '单未结' : '') + '</span>' +
+      years.forEach(function (yg, yi) {
+        // 年份标题
+        html += '<div class="audit-year-group" data-year="' + yg.year + '">' +
+          '<div class="audit-year-header" data-year-group="' + yi + '" style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;background:rgba(99,102,241,0.06);border-radius:12px;margin-bottom:12px;cursor:pointer;">' +
+            '<div style="font-size:18px;font-weight:700;color:#2d3142;">' +
+              '<span class="year-toggle">▼</span> ' + yg.year + '年' +
+              '<span style="font-size:13px;color:#8b93a7;margin-left:12px;font-weight:400;">' + yg.bills.length + '单</span>' +
             '</div>' +
-            '<div class="audit-customer-stats">' +
-              '<span>营收 <strong style="color:#6366f1;">¥' + formatMoney(g.revenue) + '</strong></span>' +
-              '<span>成本 <strong style="color:#f59e0b;">¥' + formatMoney(g.cost) + '</strong></span>' +
-              '<span>利润 <strong style="color:' + (g.profit >= 0 ? '#10b981' : '#ef4444') + ';">¥' + formatMoney(g.profit) + '</strong></span>' +
+            '<div style="font-size:14px;">' +
+              '<span style="margin-right:16px;">营收 <strong style="color:#6366f1;">¥' + formatMoney(yg.revenue) + '</strong></span>' +
+              '<span style="margin-right:16px;">成本 <strong style="color:#f59e0b;">¥' + formatMoney(yg.cost) + '</strong></span>' +
+              '<span>利润 <strong style="color:' + (yg.profit >= 0 ? '#10b981' : '#ef4444') + ';">¥' + formatMoney(yg.profit) + '</strong></span>' +
             '</div>' +
           '</div>' +
-          '<div class="audit-customer-bills" id="auditBills_' + gi + '" style="display:none;">' +
-            '<table class="data-table audit-bill-table"><thead><tr>' +
-              '<th>日期</th><th>账单金额</th><th>成本</th><th>利润</th><th>状态</th>' +
-            '</tr></thead><tbody>';
-        g.bills.forEach(function (b) {
-          var isPaid = b.status === 'paid';
-          var dateLink = isPaid
-            ? '<a href="#/bill/' + b.id + '" style="color:#2d3142;font-weight:500;">' + escapeHtml(b.date) + '</a>'
-            : '<a href="#/bill/' + b.id + '/edit" style="color:#6366f1;font-weight:500;">' + escapeHtml(b.date) + '</a>';
-          html += '<tr data-month="' + (b.date ? b.date.slice(0, 7) : '') + '" data-status="' + b.status + '">' +
-            '<td>' + dateLink + '</td>' +
-            '<td style="color:#6366f1;font-weight:600;">¥' + formatMoney(b.revenue) + '</td>' +
-            '<td style="color:#f59e0b;">¥' + formatMoney(b.cost) + '</td>' +
-            '<td style="color:' + (b.profit >= 0 ? '#10b981' : '#ef4444') + ';font-weight:600;">¥' + formatMoney(b.profit) + '</td>' +
-            '<td><span class="status-tag ' + (isPaid ? 'status-paid' : 'status-unpaid') + '">' +
-              (isPaid ? ICONS.checkCircle + ' 已结' : ICONS.alertCircle + ' 未结') + '</span></td>' +
-          '</tr>';
+          '<div class="audit-year-content" id="auditYear_' + yi + '">';
+
+        // 年内按客户分组
+        var groups = Object.values(yg.customerGroups).sort(function (a, b) { return b.revenue - a.revenue; });
+        groups.forEach(function (g, gi) {
+          var unpaidCount = g.bills.filter(function (b) { return b.status === 'unpaid'; }).length;
+          var globalGi = yi + '_' + gi;
+          html += '<div class="audit-customer-group" data-customer="' + g.customerId + '">' +
+            '<div class="audit-customer-header" data-group="' + globalGi + '">' +
+              '<div class="audit-customer-name">' +
+                '<span class="group-toggle">▶</span> ' +
+                '<a href="#/customer/' + g.customerId + '" class="audit-cust-link" onclick="event.stopPropagation();">' + escapeHtml(g.customerName) + '</a>' +
+                '<span style="font-size:13px;color:#8b93a7;margin-left:8px;">' + g.bills.length + '单' + (unpaidCount > 0 ? '，' + unpaidCount + '单未结' : '') + '</span>' +
+              '</div>' +
+              '<div class="audit-customer-stats">' +
+                '<span>营收 <strong style="color:#6366f1;">¥' + formatMoney(g.revenue) + '</strong></span>' +
+                '<span>成本 <strong style="color:#f59e0b;">¥' + formatMoney(g.cost) + '</strong></span>' +
+                '<span>利润 <strong style="color:' + (g.profit >= 0 ? '#10b981' : '#ef4444') + ';">¥' + formatMoney(g.profit) + '</strong></span>' +
+              '</div>' +
+            '</div>' +
+            '<div class="audit-customer-bills" id="auditBills_' + globalGi + '" style="display:none;">' +
+              '<table class="data-table audit-bill-table"><thead><tr>' +
+                '<th>日期</th><th>账单金额</th><th>成本</th><th>利润</th><th>状态</th>' +
+              '</tr></thead><tbody>';
+          g.bills.forEach(function (b) {
+            var isPaid = b.status === 'paid';
+            var dateLink = isPaid
+              ? '<a href="#/bill/' + b.id + '" style="color:#2d3142;font-weight:500;">' + escapeHtml(b.date) + '</a>'
+              : '<a href="#/bill/' + b.id + '/edit" style="color:#6366f1;font-weight:500;">' + escapeHtml(b.date) + '</a>';
+            html += '<tr data-year="' + b.year + '" data-status="' + b.status + '">' +
+              '<td>' + dateLink + '</td>' +
+              '<td style="color:#6366f1;font-weight:600;">¥' + formatMoney(b.revenue) + '</td>' +
+              '<td style="color:#f59e0b;">¥' + formatMoney(b.cost) + '</td>' +
+              '<td style="color:' + (b.profit >= 0 ? '#10b981' : '#ef4444') + ';font-weight:600;">¥' + formatMoney(b.profit) + '</td>' +
+              '<td><span class="status-tag ' + (isPaid ? 'status-paid' : 'status-unpaid') + '">' +
+                (isPaid ? ICONS.checkCircle + ' 已结' : ICONS.alertCircle + ' 未结') + '</span></td>' +
+            '</tr>';
+          });
+          html += '</tbody></table></div></div>';
         });
-        html += '</tbody></table></div></div>';
+        html += '</div></div>';
       });
     }
 
     $('mainContent').innerHTML = html;
+
+    // 年份分组展开/收起
+    document.querySelectorAll('.audit-year-header').forEach(function (header) {
+      header.onclick = function () {
+        var yi = this.getAttribute('data-year-group');
+        var contentDiv = $('auditYear_' + yi);
+        var toggle = this.querySelector('.year-toggle');
+        if (contentDiv.style.display === 'none') {
+          contentDiv.style.display = '';
+          toggle.textContent = '▼';
+        } else {
+          contentDiv.style.display = 'none';
+          toggle.textContent = '▶';
+        }
+      };
+    });
 
     // 客户分组展开/收起
     document.querySelectorAll('.audit-customer-header').forEach(function (header) {
@@ -990,26 +1037,34 @@
 
     // 筛选
     function applyFilter() {
-      var month = $('auditMonthFilter').value;
+      var year = $('auditYearFilter').value;
       var status = $('auditStatusFilter').value;
       var visibleRevenue = 0;
       var visibleCost = 0;
 
-      document.querySelectorAll('.audit-customer-group').forEach(function (group) {
-        var rows = group.querySelectorAll('tbody tr');
-        var groupHasVisible = false;
-        rows.forEach(function (row) {
-          var show = true;
-          if (month !== 'all' && row.getAttribute('data-month') !== month) show = false;
-          if (status !== 'all' && row.getAttribute('data-status') !== status) show = false;
-          row.style.display = show ? '' : 'none';
-          if (show) {
-            groupHasVisible = true;
-            visibleRevenue += parseFloat(row.children[1].textContent.replace('¥', '')) || 0;
-            visibleCost += parseFloat(row.children[2].textContent.replace('¥', '')) || 0;
-          }
+      document.querySelectorAll('.audit-year-group').forEach(function (yearGroup) {
+        var yearVal = yearGroup.getAttribute('data-year');
+        var yearShow = year === 'all' || yearVal === year;
+        var yearHasVisible = false;
+
+        yearGroup.querySelectorAll('.audit-customer-group').forEach(function (group) {
+          var rows = group.querySelectorAll('tbody tr');
+          var groupHasVisible = false;
+          rows.forEach(function (row) {
+            var show = true;
+            if (status !== 'all' && row.getAttribute('data-status') !== status) show = false;
+            row.style.display = show ? '' : 'none';
+            if (show) {
+              groupHasVisible = true;
+              visibleRevenue += parseFloat(row.children[1].textContent.replace('¥', '')) || 0;
+              visibleCost += parseFloat(row.children[2].textContent.replace('¥', '')) || 0;
+            }
+          });
+          group.style.display = (yearShow && groupHasVisible) ? '' : 'none';
+          if (yearShow && groupHasVisible) yearHasVisible = true;
         });
-        group.style.display = groupHasVisible ? '' : 'none';
+
+        yearGroup.style.display = yearHasVisible ? '' : 'none';
       });
 
       // 更新汇总卡片为筛选后的数据
@@ -1021,7 +1076,7 @@
       }
     }
 
-    $('auditMonthFilter').onchange = applyFilter;
+    $('auditYearFilter').onchange = applyFilter;
     $('auditStatusFilter').onchange = applyFilter;
 
     // 退出验证
@@ -1037,19 +1092,16 @@
     };
   }
 
-  // 构建月份选项
-  function buildMonthOptions(billList) {
-    var months = {};
+  // 构建年份选项
+  function buildYearOptions(billList) {
+    var years = {};
     billList.forEach(function (b) {
-      if (b.date) {
-        var m = b.date.slice(0, 7);
-        months[m] = true;
-      }
+      if (b.year) years[b.year] = true;
     });
-    var sorted = Object.keys(months).sort().reverse();
+    var sorted = Object.keys(years).sort().reverse();
     var html = '';
-    sorted.forEach(function (m) {
-      html += '<option value="' + m + '">' + m + '</option>';
+    sorted.forEach(function (y) {
+      html += '<option value="' + y + '">' + y + '年</option>';
     });
     return html;
   }

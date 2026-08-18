@@ -276,36 +276,49 @@
     }
 
     /**
-     * 计算客户累计消费
+     * 计算客户累计消费（可按年份过滤）
      */
-    function getCustomerTotalSpent(customerId) {
+    function getCustomerTotalSpent(customerId, year) {
       var bills = getBillsByCustomer(customerId);
       var total = 0;
       for (var i = 0; i < bills.length; i++) {
+        if (year && getBillYear(bills[i]) !== year) continue;
         total += parseFloat(bills[i].total) || 0;
       }
       return Math.round(total * 100) / 100;
     }
 
     /**
-     * 获取客户未结账单数量
+     * 获取账单年份（从createdAt提取）
      */
-    function getCustomerUnpaidCount(customerId) {
+    function getBillYear(bill) {
+      if (bill.createdAt) {
+        return new Date(bill.createdAt).getFullYear();
+      }
+      return new Date().getFullYear();
+    }
+
+    /**
+     * 获取客户未结账单数量（可按年份过滤）
+     */
+    function getCustomerUnpaidCount(customerId, year) {
       var bills = getBillsByCustomer(customerId);
       var count = 0;
       for (var i = 0; i < bills.length; i++) {
+        if (year && getBillYear(bills[i]) !== year) continue;
         if (bills[i].status === 'unpaid') count++;
       }
       return count;
     }
 
     /**
-     * 获取客户未结账单总金额
+     * 获取客户未结账单总金额（可按年份过滤）
      */
-    function getCustomerUnpaidAmount(customerId) {
+    function getCustomerUnpaidAmount(customerId, year) {
       var bills = getBillsByCustomer(customerId);
       var total = 0;
       for (var i = 0; i < bills.length; i++) {
+        if (year && getBillYear(bills[i]) !== year) continue;
         if (bills[i].status === 'unpaid') {
           total += parseFloat(bills[i].total) || 0;
         }
