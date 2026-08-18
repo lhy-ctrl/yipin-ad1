@@ -156,6 +156,16 @@
   };
 
   // ========== 业务数据封装 ==========
+  // 从日期字符串提取年份
+  function extractYear(dateStr, createdAt) {
+    if (dateStr) {
+      var m = String(dateStr).match(/(\d{4})[-/年]/);
+      if (m) return parseInt(m[1], 10);
+    }
+    if (createdAt) return new Date(createdAt).getFullYear();
+    return new Date().getFullYear();
+  }
+
   var CloudStore = {
     sb: SB,
 
@@ -214,34 +224,36 @@
     getBills: async function () {
       var rows = await SB.select('bills', 'select=*&order=created_at.desc');
       return rows.map(function (r) {
-        return { id: r.id, customerId: r.customer_id, date: r.date || '', status: r.status || 'unpaid', total: parseFloat(r.total) || 0, items: r.items || [] };
+        return { id: r.id, customerId: r.customer_id, date: r.date || '', year: r.year || extractYear(r.date, r.created_at), status: r.status || 'unpaid', total: parseFloat(r.total) || 0, items: r.items || [], createdAt: r.created_at };
       });
     },
     getBillById: async function (id) {
       var rows = await SB.select('bills', 'id=eq.' + encodeURIComponent(id));
       if (!rows.length) return null;
       var r = rows[0];
-      return { id: r.id, customerId: r.customer_id, date: r.date || '', status: r.status || 'unpaid', total: parseFloat(r.total) || 0, items: r.items || [] };
+      return { id: r.id, customerId: r.customer_id, date: r.date || '', year: r.year || extractYear(r.date, r.created_at), status: r.status || 'unpaid', total: parseFloat(r.total) || 0, items: r.items || [], createdAt: r.created_at };
     },
     getBillsByCustomer: async function (customerId) {
       var rows = await SB.select('bills', 'customer_id=eq.' + encodeURIComponent(customerId) + '&order=created_at.desc');
       return rows.map(function (r) {
-        return { id: r.id, customerId: r.customer_id, date: r.date || '', status: r.status || 'unpaid', total: parseFloat(r.total) || 0, items: r.items || [] };
+        return { id: r.id, customerId: r.customer_id, date: r.date || '', year: r.year || extractYear(r.date, r.created_at), status: r.status || 'unpaid', total: parseFloat(r.total) || 0, items: r.items || [], createdAt: r.created_at };
       });
     },
     addBill: async function (bill) {
       var id = bill.id || ('bill_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+      var billYear = bill.year || extractYear(bill.date, null);
       await SB.insert('bills', {
         id: id, customer_id: bill.customerId, date: bill.date || '',
+        year: billYear,
         status: bill.status || 'unpaid', total: bill.total || 0,
         items: bill.items || []
       });
-      return { id: id, customerId: bill.customerId, date: bill.date || '', status: bill.status || 'unpaid', total: bill.total || 0, items: bill.items || [] };
+      return { id: id, customerId: bill.customerId, date: bill.date || '', year: billYear, status: bill.status || 'unpaid', total: bill.total || 0, items: bill.items || [] };
     },
     updateBill: async function (id, data) {
       var update = {};
       if (data.customerId !== undefined) update.customer_id = data.customerId;
-      if (data.date !== undefined) update.date = data.date;
+      if (data.date !== undefined) { update.date = data.date; update.year = extractYear(data.date, null); }
       if (data.status !== undefined) update.status = data.status;
       if (data.total !== undefined) update.total = data.total;
       if (data.items !== undefined) update.items = data.items;
@@ -323,7 +335,7 @@
       if (data.bills) {
         for (var j = 0; j < data.bills.length; j++) {
           var b = data.bills[j];
-          await SB.insert('bills', { id: b.id, customer_id: b.customerId, date: b.date || '', status: b.status || 'unpaid', total: b.total || 0, items: b.items || [] });
+          await SB.insert('bills', { id: b.id, customer_id: b.customerId, date: b.date || '', year: b.year || extractYear(b.date, b.createdAt), status: b.status || 'unpaid', total: b.total || 0, items: b.items || [] });
         }
       }
       if (data.projects) {

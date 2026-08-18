@@ -86,8 +86,17 @@
         step = '插入账单数据';
         for (var j = 0; j < data.bills.length; j++) {
           var b = data.bills[j];
+          // 确保有year字段
+          var billYear = b.year;
+          if (!billYear && b.date) {
+            var m = String(b.date).match(/(\d{4})[-/年]/);
+            if (m) billYear = parseInt(m[1], 10);
+          }
+          if (!billYear && b.createdAt) billYear = new Date(b.createdAt).getFullYear();
+          if (!billYear) billYear = new Date().getFullYear();
           await CloudStore.sb.insert('bills', {
             id: b.id, customer_id: b.customerId, date: b.date || '',
+            year: billYear,
             status: b.status || 'unpaid', total: b.total || 0, items: b.items || []
           });
         }

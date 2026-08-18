@@ -26,11 +26,18 @@ create table if not exists public.bills (
   id text primary key,
   customer_id text not null,
   date text default '',
+  year integer,
   status text default 'unpaid',
   total numeric default 0,
   items jsonb default '[]'::jsonb,
   created_at timestamptz default now()
 );
+
+-- 为已有表添加year列（如果不存在）
+alter table public.bills add column if not exists year integer;
+-- 从date字段填充year
+update public.bills set year = cast(substring(date from 1 for 4) as integer) where date ~ '^\d{4}[-/]' and year is null;
+update public.bills set year = extract(year from created_at)::integer where year is null;
 
 -- ============================================
 -- 3. 项目库表
