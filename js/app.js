@@ -1602,13 +1602,24 @@
       return;
     }
 
-    var bills = store.getBillsByCustomer(params.customerId);
+    var currentYear = new Date().getFullYear();
+    var allBills = store.getBillsByCustomer(params.customerId);
+    // 只显示当年账单
+    var bills = allBills.filter(function (b) {
+      var y = b.year;
+      if (!y && b.date) {
+        var m = String(b.date).match(/(\d{4})[-/年]/);
+        if (m) y = parseInt(m[1], 10);
+      }
+      if (!y && b.createdAt) y = new Date(b.createdAt).getFullYear();
+      return y === currentYear;
+    });
     // 按日期倒序
     bills.sort(function (a, b) {
       return (b.date || '').localeCompare(a.date || '');
     });
 
-    var totalSpent = store.getCustomerTotalSpent(params.customerId);
+    var totalSpent = store.getCustomerTotalSpent(params.customerId, currentYear);
 
     var html = '<button class="back-btn" onclick="location.hash=\'#/\'">← 返回客户列表</button>';
     html += '<div class="page-header">' +
