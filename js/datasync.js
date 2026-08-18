@@ -62,18 +62,20 @@
       if (!this.isLoggedIn()) return;
 
       this.isSyncing = true;
+      var step = '开始';
       try {
+        step = '读取本地数据';
         var data = store.exportAll();
-        console.log('[同步] 开始同步：' + data.customers.length + '客户，' + data.bills.length + '账单，' + data.projects.length + '项目');
+        console.log('[同步] 开始：' + data.customers.length + '客户，' + data.bills.length + '账单，' + data.projects.length + '项目');
 
-        console.log('[同步] 清空账单表...');
+        step = '清空账单表';
         await CloudStore.sb.clear('bills');
-        console.log('[同步] 清空客户表...');
+        step = '清空客户表';
         await CloudStore.sb.clear('customers');
-        console.log('[同步] 清空项目表...');
+        step = '清空项目表';
         await CloudStore.sb.clear('projects');
 
-        console.log('[同步] 插入客户...');
+        step = '插入客户数据';
         for (var i = 0; i < data.customers.length; i++) {
           var c = data.customers[i];
           await CloudStore.sb.insert('customers', {
@@ -81,7 +83,7 @@
             address: c.address || '', vip_type: c.vipType || 'normal'
           });
         }
-        console.log('[同步] 插入账单...');
+        step = '插入账单数据';
         for (var j = 0; j < data.bills.length; j++) {
           var b = data.bills[j];
           await CloudStore.sb.insert('bills', {
@@ -89,7 +91,7 @@
             status: b.status || 'unpaid', total: b.total || 0, items: b.items || []
           });
         }
-        console.log('[同步] 插入项目...');
+        step = '插入项目数据';
         for (var k = 0; k < data.projects.length; k++) {
           var p = data.projects[k];
           await CloudStore.sb.insert('projects', {
@@ -99,9 +101,9 @@
         }
         console.log('[同步] 完成');
       } catch (e) {
-        console.error('[同步] 失败', e);
+        console.error('[同步] 失败在步骤：' + step, e);
         this.isSyncing = false;
-        throw e;
+        throw new Error(step + ': ' + e.message);
       }
       this.isSyncing = false;
       if (this.pendingSync) {

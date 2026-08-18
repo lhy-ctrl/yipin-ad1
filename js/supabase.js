@@ -43,7 +43,8 @@
     headers: function () {
       var h = {
         'apikey': this.key,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Prefer': 'return=representation'
       };
       var t = this.getToken();
       if (t) h['Authorization'] = 'Bearer ' + t;
@@ -84,20 +85,36 @@
     select: async function (table, query) {
       var url = this.url + '/rest/v1/' + table;
       if (query) url += '?' + query;
-      var res = await fetch(url, { headers: this.headers() });
-      if (!res.ok) throw new Error('查询失败: ' + res.status);
-      return await res.json();
+      try {
+        var res = await fetch(url, { headers: this.headers() });
+        if (!res.ok) throw new Error('查询失败(' + table + '): ' + res.status);
+        return await res.json();
+      } catch (e) {
+        if (e.message && e.message.indexOf('查询失败') >= 0) throw e;
+        throw new Error('查询失败(' + table + '): ' + e.message + ' [URL: ' + url + ']');
+      }
     },
 
     // 插入
     insert: async function (table, data) {
-      var res = await fetch(this.url + '/rest/v1/' + table, {
-        method: 'POST',
-        headers: this.headers(),
-        body: JSON.stringify(data)
-      });
-      if (!res.ok) throw new Error('插入失败: ' + res.status);
-      return await res.json();
+      var url = this.url + '/rest/v1/' + table;
+      try {
+        var res = await fetch(url, {
+          method: 'POST',
+          headers: this.headers(),
+          body: JSON.stringify(data)
+        });
+        if (!res.ok) {
+          var errText = await res.text();
+          throw new Error('插入失败(' + table + '): ' + res.status + ' ' + errText);
+        }
+        // 处理空响应体
+        var text = await res.text();
+        return text ? JSON.parse(text) : data;
+      } catch (e) {
+        if (e.message && e.message.indexOf('插入失败') >= 0) throw e;
+        throw new Error('插入失败(' + table + '): ' + e.message + ' [URL: ' + url + ']');
+      }
     },
 
     // 更新
@@ -123,12 +140,18 @@
 
     // 清空表
     clear: async function (table) {
-      var res = await fetch(this.url + '/rest/v1/' + table + '?id=not.is.null', {
-        method: 'DELETE',
-        headers: this.headers()
-      });
-      if (!res.ok) throw new Error('清空失败: ' + res.status + ' ' + (await res.text()));
-      return true;
+      var url = this.url + '/rest/v1/' + table + '?id=not.is.null';
+      try {
+        var res = await fetch(url, {
+          method: 'DELETE',
+          headers: this.headers()
+        });
+        if (!res.ok) throw new Error('清空失败(' + table + '): ' + res.status + ' ' + (await res.text()));
+        return true;
+      } catch (e) {
+        if (e.message && e.message.indexOf('清空失败') >= 0) throw e;
+        throw new Error('清空失败(' + table + '): ' + e.message + ' [URL: ' + url + ']');
+      }
     }
   };
 
