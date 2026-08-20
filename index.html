@@ -8,11 +8,18 @@
   <link rel="apple-touch-icon" href="assets/logo.jpg">
   <link rel="stylesheet" href="css/style.css?v=2">
   <!-- html2canvas 用于导出JPG -->
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <!-- SheetJS 用于Excel导入导出 -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
+  <!-- 页面加载动画 -->
+  <div id="pageLoader" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#f5f6fa;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;transition:opacity 0.3s;">
+    <div style="width:48px;height:48px;border:3px solid rgba(99,102,241,0.2);border-top-color:#6366f1;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+    <div style="margin-top:16px;color:#8b93a7;font-size:14px;">加载中...</div>
+  </div>
+  <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+
   <div class="app">
     <!-- 左侧导航栏（液态玻璃） -->
     <aside class="sidebar">

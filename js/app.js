@@ -10,13 +10,17 @@
 
   // 数据变更标记：有未备份的变更时为true
   var hasUnsavedChanges = false;
+  var syncTimer = null;
   function markChanged() {
     hasUnsavedChanges = true;
-    // 异步同步到云端（非本地模式且已登录）
+    // 异步同步到云端（非本地模式且已登录），2秒防抖
     if (typeof sessionStorage === 'undefined') return;
     var isLocalMode = sessionStorage.getItem('yipin_local_mode') === '1';
     if (!isLocalMode && typeof DataSync !== 'undefined' && DataSync.isLoggedIn()) {
-      DataSync.syncToCloud();
+      if (syncTimer) clearTimeout(syncTimer);
+      syncTimer = setTimeout(function () {
+        DataSync.syncToCloud();
+      }, 2000);
     }
   }
 
@@ -2236,19 +2240,7 @@
       return;
     }
 
-    // 已通过密码验证：如果配置了Supabase且未登录，自动登录云端
-    var sbConfigured = typeof SB !== 'undefined' && SB.email && SB.email !== 'your-email@example.com';
-    if (sbConfigured && typeof DataSync !== 'undefined' && !DataSync.isLoggedIn()) {
-      try {
-        var result = await DataSync.login(SB.email, SB.sbPassword);
-        if (!result.success) {
-          showToast('云端登录失败，使用本地模式');
-        }
-      } catch (e) {
-        console.warn('云端登录失败', e);
-      }
-    }
-
+    // 先初始化路由和页面（不等待云端）
     // 登出按钮
     var logoutBtn = $('logoutBtn');
     if (logoutBtn) {
@@ -2261,20 +2253,6 @@
       };
     }
 
-    // 已登录：从云端拉取最新数据
-    if (typeof DataSync !== 'undefined' && DataSync.isLoggedIn()) {
-      try {
-        await DataSync.loadFromCloud();
-      } catch (e) {
-        console.warn('云端数据加载失败，使用本地缓存', e);
-      }
-    }
-
-    // 页面关闭/刷新时同步云端
-    window.addEventListener('beforeunload', function () {
-      // 数据已在每次修改时自动同步到云端，无需额外操作
-    });
-
     // 路由监听
     window.addEventListener('hashchange', router);
 
@@ -2283,6 +2261,38 @@
       location.hash = '#/';
     } else {
       router();
+    }
+
+    // 隐藏页面加载动画
+    var loader = $('pageLoader');
+    if (loader) {
+      loader.style.opacity = '0';
+      setTimeout(function () { loader.style.display = 'none'; }, 300);
+    }
+
+    // 后台异步：云端登录和拉取数据，不阻塞页面显示
+    var sbConfigured = typeof SB !== 'undefined' && SB.email && SB.email !== 'your-email@example.com';
+    if (sbConfigured && typeof DataSync !== 'undefined') {
+      (async function () {
+        try {
+          if (!DataSync.isLoggedIn()) {
+            var result = await DataSync.login(SB.email, SB.sbPassword);
+            if (!result.success) {
+              console.warn('云端登录失败，使用本地模式');
+              return;
+            }
+          }
+          // 登录成功，从云端拉取最新数据
+          if (DataSync.isLoggedIn()) {
+            await DataSync.loadFromCloud();
+            // 数据拉取完成后，刷新当前页面
+            router();
+            console.log('云端数据已同步');
+          }
+        } catch (e) {
+          console.warn('云端同步失败，使用本地数据', e);
+        }
+      })();
     }
   }
 
