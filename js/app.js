@@ -1861,6 +1861,12 @@
   function renderBillEditor(customer, bill) {
     var isEdit = !!bill.id;
     var projects = store.getProjects();
+    // 制作人默认为客户联系人
+    var defaultMaker = customer.contact || '';
+    // 现有行中制作人空的默认填充
+    bill.items.forEach(function (item) {
+      if (!item.maker) item.maker = defaultMaker;
+    });
 
     // 项目datalist选项（可输入可选择）
     var projectDatalistOptions = '';
@@ -1934,7 +1940,7 @@
 
     // 添加行
     $('addRowBtn').onclick = function () {
-      var newItem = { content: '', finalDate: '', project: '', qty: 1, price: 0, total: 0, maker: '', remark: '' };
+      var newItem = { content: '', finalDate: '', project: '', qty: 1, price: 0, total: 0, maker: defaultMaker, remark: '' };
       bill.items.push(newItem);
       var tbody = $('billItemsBody');
       var tr = document.createElement('tr');
