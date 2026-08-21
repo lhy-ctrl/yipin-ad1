@@ -20,25 +20,29 @@
       try {
         var cloudData = await CloudStore.exportAll();
         var localData = store.exportAll();
-        var hasCloudData = cloudData.customers.length > 0 || cloudData.bills.length > 0 || cloudData.projects.length > 0;
-        var hasLocalData = localData.customers.length > 0 || localData.bills.length > 0 || localData.projects.length > 0;
+        var cloudCount = cloudData.customers.length + cloudData.bills.length + cloudData.projects.length;
+        var localCount = localData.customers.length + localData.bills.length + localData.projects.length;
+        // 云端数据异常检查：有账单但无客户
+        var cloudAbnormal = cloudData.bills.length > 0 && cloudData.customers.length === 0;
+        var hasCloudData = cloudCount > 0 && !cloudAbnormal;
+        var hasLocalData = localCount > 0;
 
         if (hasCloudData && !hasLocalData) {
           // 云端有数据，本地为空，拉取到本地
           store.importAll(cloudData);
           console.log('已从云端同步数据：' + cloudData.customers.length + '客户，' + cloudData.bills.length + '账单，' + cloudData.projects.length + '项目');
         } else if (hasCloudData && hasLocalData) {
-          // 两边都有数据，比较客户数量，用数据多的一方
-          if (cloudData.customers.length >= localData.customers.length) {
+          // 两边都有数据，用数据总量多的一方
+          if (cloudCount >= localCount) {
             store.importAll(cloudData);
-            console.log('云端数据较新，已拉取：' + cloudData.customers.length + '客户');
+            console.log('云端数据较多，已拉取：' + cloudCount + '条');
           } else {
-            console.log('本地数据较多，同步到云端');
+            console.log('本地数据较多，同步到云端：' + localCount + '条');
             await this.syncToCloud();
           }
         } else if (!hasCloudData && hasLocalData) {
-          // 云端为空，本地有数据，同步本地到云端
-          console.log('云端为空，同步本地数据到云端');
+          // 云端为空或异常，本地有数据，同步本地到云端
+          console.log('云端为空/异常，同步本地数据到云端：' + localCount + '条');
           await this.syncToCloud();
         }
         // 两边都为空，什么都不做
@@ -79,13 +83,29 @@
       try {
         step = '读取本地数据';
         var data = store.exportAll();
-        // 安全保护：本地数据为空时不同步，防止清空云端
-        if (data.customers.length === 0 && data.bills.length === 0 && data.projects.length === 0) {
-          console.warn('[同步] 本地数据为空，跳过同步以保护云端数据');
+        // 安全保护：本地数据异常时不同步，防止清空云端
+        var allEmpty = data.customers.length === 0 && data.bills.length === 0 && data.projects.length === 0;
+        var hasBillsNoCustomer = data.bills.length > 0 && data.customers.length === 0;
+        if (allEmpty) {
+          console.warn('[同步] 本地数据全空，跳过同步以保护云端数据');
+          this.isSyncing = false;
+          return;
+        }
+        if (hasBillsNoCustomer) {
+          console.warn('[同步] 本地有账单但无客户，数据异常，跳过同步');
           this.isSyncing = false;
           return;
         }
         console.log('[同步] 开始：' + data.customers.length + '客户，' + data.bills.length + '账单，' + data.projects.length + '项目');
+
+        // 同步前先备份云端数据，失败可恢复
+        step = '备份云端数据';
+        var cloudBackup = null;
+        try {
+          cloudBackup = await CloudStore.exportAll();
+        } catch (e) {
+          console.warn('[同步] 云端备份失败，继续同步', e);
+        }
 
         // 组装批量数据
         step = '组装数据';
@@ -132,6 +152,16 @@
         console.log('[同步] 完成');
       } catch (e) {
         console.error('[同步] 失败在步骤：' + step, e);
+        // 同步失败，恢复云端备份
+        if (cloudBackup) {
+          try {
+            console.warn('[同步] 正在恢复云端数据...');
+            await CloudStore.importAll(cloudBackup);
+            console.warn('[同步] 云端数据已恢复');
+          } catch (restoreErr) {
+            console.error('[同步] 云端数据恢复失败', restoreErr);
+          }
+        }
         this.isSyncing = false;
         throw new Error(step + ': ' + e.message);
       }
